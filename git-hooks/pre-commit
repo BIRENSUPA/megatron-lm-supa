@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Copyright©2023-2025 Shanghai Biren Technology Co., Ltd. All rights reserved.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+SKIP_FILES_REL=(
+)
+SKIP_GLOBS=()
+
+is_in_skip_list() {
+  local rel="$1"
+  for s in "${SKIP_FILES_REL[@]}"; do
+    [[ "$rel" == "$s" ]] && return 0
+  done
+  for g in "${SKIP_GLOBS[@]}"; do
+    [[ "$rel" == $g ]] && return 0
+  done
+  return 1
+}
+
+build_isort_skip_args() {
+  ISORT_SKIP_ARGS=()
+  for s in "${SKIP_FILES_REL[@]}"; do
+    ISORT_SKIP_ARGS+=( "--skip" "$REPO_ROOT/$s" )
+  done
+  for g in "${SKIP_GLOBS[@]}"; do
+    ISORT_SKIP_ARGS+=( "--skip-glob" "$g" )
+  done
+}
+
+build_black_force_exclude_regex() {
+  local parts=()
+  for s in "${SKIP_FILES_REL[@]}"; do
+    local esc="${s//\./\\.}"
+    esc="${esc//\//\/}"
+    parts+=( "$esc" )
+  done
+  if ((${#parts[@]})); then
+    BLACK_FORCE_EXCLUDE="(^|/)($(IFS='|'; echo "${parts[*]}"))$"
+  else
+    BLACK_FORCE_EXCLUDE=""
+  fi
+}
+
+build_isort_skip_args
+build_black_force_exclude_regex
+
+mapfile -t STAGED < <(git diff --cached --name-only --diff-filter=ACM || true)
+
+PY=()
+CPP=()
+for f in "${STAGED[@]}"; do
+  case "$f" in
+    *.py|*.pyi|*.pyx|*.pxd) PY+=("$f") ;;
+    *.cpp|*.hpp|*.h)       CPP+=("$f") ;;
+  esac
+done
+
+fail=0
+
+if ((${#PY[@]})); then
+  for f in "${PY[@]}"; do
+    is_in_skip_list "$f" && continue
+    if ! git show ":$f" | flake8 --stdin-display-name "$f" -; then
+      echo "flake8 failed: $f"
+      fail=1
+    fi
+  done
+fi
+
+if ((${#PY[@]})); then
+  for f in "${PY[@]}"; do
+    is_in_skip_list "$f" && continue
+    if ! git show ":$f" | isort - --filename "$f" --profile black --check-only --diff -l 120 \
+         "${ISORT_SKIP_ARGS[@]}"; then
+      echo "isort failed: $f"
+      fail=1
+    fi
+  done
+fi
+
+if ((${#PY[@]})); then
+  for f in "${PY[@]}"; do
+    is_in_skip_list "$f" && continue
+    if [[ -n "$BLACK_FORCE_EXCLUDE" ]]; then
+      if ! git show ":$f" | black --check -S -l 120 \
+           --stdin-filename "$f" --force-exclude "$BLACK_FORCE_EXCLUDE" - >/dev/null; then
+        echo "black failed: $f"
+        fail=1
+      fi
+    else
+      if ! git show ":$f" | black --check -S -l 120 --stdin-filename "$f" - >/dev/null; then
+        echo "black failed: $f"
+        fail=1
+      fi
+    fi
+  done
+fi
+
+if ((${#CPP[@]})); then
+  for f in "${CPP[@]}"; do
+    if git show ":$f" | clang-format -style=file -assume-filename="$f" -output-replacements-xml - | grep -q 'offset='; then
+      echo "clang-format changes needed: $f"
+      fail=1
+    fi
+  done
+fi
+
+if ((fail)); then
+  cat <<'EOF'
+
+FAILED pre-commit checks.
+Fix issues (you can run: bash ./script/format.sh) and then re-stage with: git add -u
+EOF
+  exit 1
+fi
+
+echo "pre-commit: all checks passed."

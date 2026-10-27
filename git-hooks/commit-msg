@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright©2023-2025 Shanghai Biren Technology Co., Ltd. All rights reserved.
+
+import os
+import pathlib
+import re
+import subprocess
+import sys
+from typing import Optional
+
+
+def _run(cmd: list[str]) -> int:
+    # return process returncode (suppress output)
+    return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+
+
+def _is_merge_or_cherry_pick() -> bool:
+    # MERGE_HEAD exists during a merge commit
+    if _run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"]) == 0:
+        return True
+    # CHERRY_PICK_HEAD exists during a cherry-pick
+    if _run(["git", "rev-parse", "-q", "--verify", "CHERRY_PICK_HEAD"]) == 0:
+        return True
+    return False
+
+
+def _first_meaningful_line(text: str) -> Optional[str]:
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        # ignore template comments like '# Please enter the commit message...'
+        if line.lstrip().startswith("#"):
+            continue
+        return line.rstrip()
+    return None
+
+
+def main() -> int:
+    msg_file = pathlib.Path(sys.argv[1])
+    msg = msg_file.read_text(encoding="utf-8", errors="replace")
+
+    if _is_merge_or_cherry_pick():
+        print("commit-msg: merge/cherry-pick detected; skipping message validation.")
+        return 0
+
+    first = _first_meaningful_line(msg)
+    if not first:
+        print("FAILED: Empty commit message.")
+        return 1
+
+    if re.match(r"^Revert\b", first):
+        print("commit-msg: revert commit detected; skipping strict validation.")
+        return 0
+
+    pattern = re.compile(
+        r"""^
+        \[(FEAT|FIX|ENH|CHORE|TOOL|TEST|WA|DOCS)\]  # [TYPE]
+        \s+[A-Z0-9]+-\d+                            # ABC-123
+        \s*:\s+                                     # :
+        \S.+                                        # subject (non-empty)
+        $""",
+        re.VERBOSE,
+    )
+
+    if not pattern.match(first):
+        print("FAILED: Commit message does not follow the template.")
+        print("  Expect: [FEAT|FIX|ENH|CHORE|TOOL|TEST|WA|DOCS] ABC-123: short subject")
+        print("  Example: [FEAT] CORE-1024: add fused attention kernel")
+        print("  Revert commits (starting with 'Revert') are allowed.")
+        print("  If this is a merge/cherry-pick, the hook auto-skips.")
+        print("  See: .git_commit_template")
+        return 1
+
+    MAX_SUBJECT = 120
+    if len(first) > MAX_SUBJECT:
+        print(f"FAILED: Subject too long ({len(first)} > {MAX_SUBJECT}).")
+        return 1
+
+    print("commit-msg: message OK.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

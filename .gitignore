@@ -1,0 +1,8 @@
+*egg-info
+*egg
+build
+dist
+logs/
+**/logs/
+apex
+**/__pycache__/

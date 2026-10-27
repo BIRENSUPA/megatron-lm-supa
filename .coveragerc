@@ -1,0 +1,9 @@
+[run]
+branch = True
+parallel = True
+source = megatron_supa
+relative_files = True
+omit =
+    */tests/*
+    */third-party/*
+    */__init__.py
