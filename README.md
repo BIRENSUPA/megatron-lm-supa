@@ -1,5 +1,7 @@
 # 壁仞™ Megatron-LM-SUPA™
 
+中文 | [English](README.en.md)
+
 ## 1. 简介
 
 Megatron-LM-SUPA™ 是基于壁仞™开发的 Megatron-LM 适配仓库, 适配设备为BR2xx系列。通过安装本适配插件，用户可以在原生 Megatron-LM 代码仓库基础上实现对壁仞设备的支持。有关 Megatron-LM 的详细说明，请参考官方文档：[Megatron-LM GitHub](https://github.com/NVIDIA/Megatron-LM)

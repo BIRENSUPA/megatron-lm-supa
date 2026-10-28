@@ -367,7 +367,7 @@ CMD="torchrun ${DISTRIBUTED_ARGS} \
   --exit-interval 5000 \
   --transformer-impl transformer_engine \
   --cross-entropy-loss-fusion \
-  --cross-entropy-fusion-impl te \
+  --cross-entropy-fusion-impl native \
   --profile \
   --use-pytorch-profiler \
   --profile-step-start 3 \
@@ -376,7 +376,6 @@ CMD="torchrun ${DISTRIBUTED_ARGS} \
   --tensorboard-dir ${OUTPUT_DIR}/logs \
 "
 # --pytorch-profiler-collect-callstack \
-# --cross-entropy-fusion-impl native \
 
 
 # run_cmd "${CMD}" "${LOG_DIR}" "${LOG_FILE}" "${node_rank}" "${node_num}"
